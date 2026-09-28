@@ -1,30 +1,28 @@
 import numpy as np
 
-# Le dictionnaire est transmis en métadonnée : ses composantes sont des
-# intensités, donc la cellule 8 bits de la couche physique.
+# The codebook holds intensities, so it travels in the 8-bit cell.
 BITS_DICTIONNAIRE = 8
 
 
 def decouper_en_vecteurs(image, bloc_l, bloc_c):
-    """Découpe l'image en blocs et aplatit chaque bloc en un vecteur."""
+    """Split the image into blocks, each flattened into one vector."""
     hauteur, largeur = image.shape
     blocs = image.reshape(hauteur // bloc_l, bloc_l, largeur // bloc_c, bloc_c)
     return blocs.transpose(0, 2, 1, 3).reshape(-1, bloc_l * bloc_c)
 
 
 def recomposer_image(vecteurs, nb_blocs_l, nb_blocs_c, bloc_l, bloc_c):
-    """Opération inverse de decouper_en_vecteurs."""
+    """Inverse of decouper_en_vecteurs."""
     blocs = vecteurs.reshape(nb_blocs_l, nb_blocs_c, bloc_l, bloc_c)
     return blocs.transpose(0, 2, 1, 3).reshape(nb_blocs_l * bloc_l, nb_blocs_c * bloc_c)
 
 
 def plus_proches_voisins(X, C, taille_tranche=4096):
-    """Indice du centroïde euclidien le plus proche pour chaque vecteur de X.
+    """Index of the nearest centroid (euclidean) for every vector of X.
 
-    Développe ||x - c||^2 = ||x||^2 - 2*x.c + ||c||^2. Le terme ||x||^2 est
-    constant pour un x donné : il ne change pas l'argmin, on l'omet. La racine
-    carrée est également inutile, elle est monotone croissante.
-    Le découpage en tranches évite d'allouer une matrice N x K d'un bloc.
+    Expands ||x - c||^2 = ||x||^2 - 2*x.c + ||c||^2 and drops ||x||^2, constant
+    for a given x: same argmin, one matrix product instead of a loop over K.
+    Slicing keeps the N x K distance matrix from being allocated at once.
     """
     normes_C = (C ** 2).sum(axis=1)
     indices = np.zeros(len(X), dtype=int)
@@ -36,13 +34,11 @@ def plus_proches_voisins(X, C, taille_tranche=4096):
 
 
 def recalculer_centroides(X, indices, C):
-    """Règle du centroïde : chaque vecteur du dictionnaire devient la moyenne
-    des vecteurs d'apprentissage qui lui sont assignés."""
+    """Centroid rule: each codevector becomes the mean of its assigned vectors."""
     K, L = C.shape
     compte = np.bincount(indices, minlength=K)
 
-    # Somme par cellule, dimension par dimension (bien plus rapide qu'un
-    # masque booléen par centroïde)
+    # Per-cell sums, one dimension at a time: L passes instead of K
     sommes = np.zeros((K, L))
     for d in range(L):
         sommes[:, d] = np.bincount(indices, weights=X[:, d], minlength=K)
@@ -51,8 +47,8 @@ def recalculer_centroides(X, indices, C):
     non_vides = compte > 0
     nouveau_C[non_vides] = sommes[non_vides] / compte[non_vides, None]
 
-    # Cellules vides : les redéployer en dédoublant la cellule la plus peuplée,
-    # sinon leur moyenne est un 0/0 qui propage des NaN dans tout le dictionnaire.
+    # An empty cell has a 0/0 mean that would spread NaN through the whole
+    # codebook: redeploy it next to the most populated one instead.
     for i in np.flatnonzero(~non_vides):
         plus_peuplee = compte.argmax()
         nouveau_C[i] = nouveau_C[plus_peuplee] * 1.01 + 0.5
@@ -61,21 +57,19 @@ def recalculer_centroides(X, indices, C):
 
 
 def lbg(X, K, iterations_max=30, seuil=1e-3):
-    """Construit un dictionnaire de K vecteurs par l'algorithme LBG.
+    """Build a K-vector codebook with the LBG algorithm.
 
-    Initialisation par dédoublement (splitting) : on part d'un centroïde
-    unique, la moyenne globale, et on double jusqu'à atteindre K.
+    Initialized by splitting: start from the global mean and double until K.
+    Slower than a random draw but deterministic, which matters for validation.
     """
     C = X.mean(axis=0, keepdims=True)
 
     while True:
-        # Phase itérative de Lloyd sur le dictionnaire courant
         distorsion_precedente = np.inf
         for _ in range(iterations_max):
             indices = plus_proches_voisins(X, C)
             C = recalculer_centroides(X, indices, C)
             distorsion = ((X - C[indices]) ** 2).mean()
-            # Arrêt sur l'amélioration relative de la distorsion
             if distorsion <= 0 or (distorsion_precedente - distorsion) / distorsion < seuil:
                 break
             distorsion_precedente = distorsion
@@ -83,26 +77,24 @@ def lbg(X, K, iterations_max=30, seuil=1e-3):
         if len(C) >= K:
             return C[:K]
 
-        # Dédoublement : chaque centroïde donne deux versions perturbées
         C = np.vstack([C * 0.99, C * 1.01])[:K]
 
 
 def QV_encode(I_reduced, ArgumentX):
-    """Codeur par quantification vectorielle. ArgumentX = (bloc_l, bloc_c, K).
+    """Vector quantization encoder. ArgumentX = (bloc_l, bloc_c, K).
 
-    Retourne I_encoded (indices dans [0, K-1]) et I_metadata (le dictionnaire,
-    composantes entières dans [0, 255]).
+    Returns I_encoded (indices in [0, K-1]) and I_metadata (the codebook, with
+    integer components in [0, 255]).
     """
     bloc_l, bloc_c, K = ArgumentX
     I_S = np.asarray(I_reduced, dtype=float)
 
-    # Ensemble d'apprentissage : l'image elle-même, découpée en blocs
+    # Training set: the image itself, split into blocks
     X = decouper_en_vecteurs(I_S, bloc_l, bloc_c)
     C = lbg(X, K)
 
-    # Le dictionnaire voyage en entiers 8 bits. On l'arrondit AVANT la
-    # classification finale, pour que les indices transmis désignent bien
-    # les vecteurs dont le décodeur disposera.
+    # Round the codebook before the final classification, so the transmitted
+    # indices point at the vectors the decoder will actually hold.
     dictionnaire = np.clip(np.round(C), 0, 255)
     indices = plus_proches_voisins(X, dictionnaire)
 

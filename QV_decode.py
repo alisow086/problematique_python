@@ -1,16 +1,15 @@
 import numpy as np
 
-# Le découpage en blocs est partagé avec le codeur : les deux doivent
-# parcourir l'image dans exactement le même ordre.
+# Block layout is shared with the encoder: both must walk the image in exactly
+# the same order.
 from QV_encode import recomposer_image
 
 
 def QV_decode(I_encoded, I_metadata, ArgumentY):
-    """Décodeur par quantification vectorielle. ArgumentY = (bloc_l, bloc_c).
+    """Vector quantization decoder. ArgumentY = (bloc_l, bloc_c).
 
-    Simple lecture de table : chaque indice est remplacé par son vecteur du
-    dictionnaire. Aucun calcul, d'où l'asymétrie caractéristique de la QV
-    (codeur lourd, décodeur quasi gratuit).
+    A plain table lookup, hence the asymmetry typical of VQ: heavy encoder,
+    almost free decoder.
     """
     bloc_l, bloc_c = ArgumentY
     indices = np.asarray(I_encoded, dtype=int)

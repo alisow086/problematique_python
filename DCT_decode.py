@@ -1,13 +1,13 @@
 import numpy as np
 
-# Transformée et format des métadonnées partagés avec le codeur : les deux
-# doivent parcourir les coefficients dans exactement le même ordre.
+# Transform and metadata layout are shared with the encoder: both must walk the
+# coefficients in exactly the same order.
 from DCT_encode import (matrice_dct, recomposer_depuis_blocs,
                         FRACTION_PAS, OFFSET_MOYENNE)
 
 
 def idct_2d_blocs(coefficients, T):
-    """DCT 2D inverse de chaque bloc : bloc = T.T @ C @ T."""
+    """Inverse 2D DCT of every block."""
     blocs = np.zeros(coefficients.shape)
     for b in range(len(coefficients)):
         blocs[b] = T.T @ coefficients[b] @ T
@@ -15,15 +15,10 @@ def idct_2d_blocs(coefficients, T):
 
 
 def DCT_decode(I_encoded, I_metadata, ArgumentY):
-    """Décodeur par transformée en cosinus discrète.
-
-    ArgumentY = (taille_bloc, lignes, colonnes).
-    I_encoded est un dictionnaire {nombre de bits: indices quantifiés}.
-    """
+    """DCT decoder. ArgumentY = (block size, rows, columns)."""
     N, lignes, colonnes = ArgumentY
     meta = np.asarray(I_metadata, dtype=int)
 
-    # Les trois tables, dans l'ordre où le codeur les a concaténées
     B = meta[:N * N].reshape(N, N)
     pas_codes = meta[N * N:2 * N * N]
     m_codes = meta[2 * N * N:3 * N * N]
@@ -31,8 +26,8 @@ def DCT_decode(I_encoded, I_metadata, ArgumentY):
     nb_blocs = (lignes // N) * (colonnes // N)
     coefficients = np.zeros((nb_blocs, N, N))
 
-    # Curseur de lecture dans chaque cellule : plusieurs coefficients peuvent
-    # partager la même largeur de code et donc la même cellule.
+    # Several coefficients can share a bit width, hence a cell: one read
+    # cursor per cell.
     curseurs = {}
     for bits in I_encoded:
         curseurs[bits] = 0
@@ -44,7 +39,7 @@ def DCT_decode(I_encoded, I_metadata, ArgumentY):
             bits = int(B[i, j])
 
             if bits == 0:
-                # Coefficient non transmis : remplacé par sa moyenne
+                # Not transmitted: replaced by its mean
                 coefficients[:, i, j] = moyenne
             else:
                 niveaux = 2 ** bits
@@ -54,7 +49,6 @@ def DCT_decode(I_encoded, I_metadata, ArgumentY):
                 codes = np.asarray(I_encoded[bits])[debut:debut + nb_blocs]
                 curseurs[bits] = debut + nb_blocs
 
-                # Niveau de reconstruction : milieu de l'intervalle de décision
                 coefficients[:, i, j] = moyenne + (codes - niveaux // 2 + 0.5) * pas
 
             position += 1

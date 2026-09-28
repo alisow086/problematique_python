@@ -1,22 +1,20 @@
 import numpy as np
 
-# Poids de luminance ITU-R BT.601 : l'oeil est beaucoup plus sensible
-# au vert qu'au bleu, d'où des coefficients inégaux.
+# ITU-R BT.601 luminance weights: the eye is far more sensitive to green
+# than to blue, hence the uneven coefficients.
 POIDS_LUMINANCE = np.array([0.299, 0.587, 0.114])
 
 
 def convert(I_source):
-    """Réduit la profondeur de couleur : RVB 24 bits -> niveaux de gris 8 bits.
+    """Reduce colour depth: 24-bit RGB -> 8-bit greyscale.
 
-    Accepte une image (H, W, 3) en RVB ou (H, W) déjà en niveaux de gris.
-    Retourne toujours une matrice 2D.
+    Accepts an (H, W, 3) RGB image or an (H, W) greyscale one, always returns
+    a 2D array.
     """
     I_source = np.asarray(I_source, dtype=float)
 
-    # Image déjà en niveaux de gris 8 bits : rien à convertir
     if I_source.ndim == 2:
         return I_source
 
-    # Image RVB 24 bits : combinaison linéaire pondérée des trois canaux
-    # (le [:, :, :3] ignore un éventuel canal alpha)
+    # [:, :, :3] drops any alpha channel
     return I_source[:, :, :3] @ POIDS_LUMINANCE

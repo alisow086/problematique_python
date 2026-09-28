@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+
+# Environnements Python (le guide demande de ne pas les joindre)
+.venv/
+venv/
+env/
+
+# Configuration d'IDE
+.idea/
+.vscode/

@@ -1,35 +1,32 @@
 import numpy as np
 
-# Le prédicteur et le format de la métadonnée sont partagés avec le codeur :
-# les deux boucles doivent être rigoureusement identiques.
+# Predictor and metadata format are shared with the encoder: both loops must be
+# rigorously identical.
 from DPCM_encode import FRACTION_PAS, predicteur_MED
 
 
 def decoder_canal(I_E, nb_bits, pas):
-    """Boucle DPCM de reconstruction sur un seul canal."""
+    """DPCM reconstruction loop on one channel."""
     hauteur, largeur = I_E.shape
     nb_niveaux = 2 ** nb_bits
     k_min = -nb_niveaux // 2
     k_max = nb_niveaux // 2
-    # Mêmes niveaux de reconstruction que ceux utilisés par le codeur
     reconstructions = (np.arange(k_min, k_max) + 0.5) * pas
 
     I_D = np.zeros((hauteur, largeur), dtype=float)
 
     for l in range(hauteur):
         for c in range(largeur):
-            # Prédiction depuis les pixels déjà reconstruits
             Ip = predicteur_MED(I_D, l, c)
-            # Pixel = prédiction + erreur quantifiée
             I_D[l, c] = Ip + reconstructions[I_E[l, c]]
 
     return I_D
 
 
 def DPCM_decode(I_encoded, I_metadata, ArgumentY):
-    """Décodeur DPCM. ArgumentY = nb_bits.
+    """DPCM decoder. ArgumentY = nb_bits.
 
-    I_metadata contient le pas de quantification en virgule fixe, un par canal.
+    I_metadata holds the quantization step as fixed point, one per channel.
     """
     nb_bits = ArgumentY
     I_E = np.asarray(I_encoded, dtype=int)
@@ -44,7 +41,6 @@ def DPCM_decode(I_encoded, I_metadata, ArgumentY):
 
     I_decoded = I_decoded_canaux[0] if I_E.ndim == 2 else np.stack(I_decoded_canaux, axis=2)
 
-    # Une image 8 bits ne peut pas stocker de valeur hors de [0, 255].
-    # Le clipping se fait APRÈS la boucle : pendant la boucle, codeur et
-    # décodeur doivent manipuler exactement les mêmes valeurs non bornées.
+    # Clip only after the loop: during it, encoder and decoder must handle the
+    # exact same unbounded values.
     return np.clip(I_decoded, 0, 255)
